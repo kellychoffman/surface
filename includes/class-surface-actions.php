@@ -64,7 +64,7 @@ class Surface_Actions {
 				'detail' => wp_trim_words( wp_strip_all_tags( $c->comment_content ), 28 ),
 				'weight' => 80,
 				'cap'    => 'moderate_comments',
-				'self'   => array( 'type' => 'compose', 'label' => 'Reply' ),
+				'self'   => array( 'type' => 'compose', 'label' => 'Reply myself' ),
 				'auto'   => array( 'label' => Surface_AI::enabled() ? 'Draft and send a reply' : 'Send a short thank-you', 'bulk' => true ),
 			);
 		}
@@ -87,7 +87,11 @@ class Surface_Actions {
 		foreach ( $updates as $u ) {
 			$names[] = $u->Name . ' ' . $u->update->new_version;
 		}
-		$n = count( $updates );
+		$n    = count( $updates );
+		$list = array();
+		foreach ( $updates as $file => $u ) {
+			$list[] = array( 'file' => $file, 'name' => $u->Name, 'from' => $u->Version, 'to' => $u->update->new_version );
+		}
 		return array(
 			array(
 				'id'     => 'plugins',
@@ -96,7 +100,8 @@ class Surface_Actions {
 				'detail' => implode( ', ', array_slice( $names, 0, 5 ) ) . ( $n > 5 ? ' and more' : '' ),
 				'weight' => 90,
 				'cap'    => 'update_plugins',
-				'self'   => array( 'type' => 'link', 'label' => 'Open updates', 'url' => admin_url( 'update-core.php?classic=1' ) ),
+				'meta'   => array( 'plugins' => $list ),
+				'self'   => array( 'type' => 'compose', 'label' => 'Review them' ),
 				'auto'   => array( 'label' => 'Update ' . ( 1 === $n ? 'it' : 'them all' ), 'bulk' => true ),
 			),
 		);
@@ -118,7 +123,8 @@ class Surface_Actions {
 				'detail' => 'Core updates are worth watching, so this one is yours.',
 				'weight' => 95,
 				'cap'    => 'update_core',
-				'self'   => array( 'type' => 'link', 'label' => 'Review update', 'url' => admin_url( 'update-core.php?classic=1' ) ),
+				'meta'   => array( 'version' => $core[0]->current ),
+				'self'   => array( 'type' => 'compose', 'label' => 'Review' ),
 				'auto'   => null,
 			),
 		);
@@ -148,7 +154,8 @@ class Surface_Actions {
 				'detail' => 'Sitting in drafts for ' . $days . ( 1 === $days ? ' day.' : ' days.' ),
 				'weight' => 50,
 				'cap'    => 'publish_posts',
-				'self'   => array( 'type' => 'link', 'label' => 'Open the draft', 'url' => get_edit_post_link( $p->ID, 'raw' ) ),
+				'meta'   => array( 'title' => get_the_title( $p ), 'content' => self::plain( $p->post_content ) ),
+				'self'   => array( 'type' => 'compose', 'label' => 'Edit it' ),
 				'auto'   => array( 'label' => 'Publish it as is', 'bulk' => false ),
 			),
 		);
@@ -175,7 +182,7 @@ class Surface_Actions {
 				'detail' => $last ? sprintf( 'Your last post went out %d days ago.', $days ) : 'Nothing is published yet.',
 				'weight' => 40,
 				'cap'    => 'publish_posts',
-				'self'   => array( 'type' => 'compose', 'label' => 'Write it' ),
+				'self'   => array( 'type' => 'compose', 'label' => 'Write it myself' ),
 				'auto'   => array( 'label' => 'Draft one for me', 'bulk' => false ),
 			),
 		);
@@ -286,10 +293,17 @@ class Surface_Actions {
 	}
 
 	private static function do_plugins() {
+		return self::update_plugins( array_keys( self::plugin_updates() ), true );
+	}
+
+	/**
+	 * Update specific plugin files. Only files with a pending update are allowed.
+	 */
+	public static function update_plugins( $files, $all = false ) {
 		if ( ! current_user_can( 'update_plugins' ) ) {
 			return new WP_Error( 'surface_nope', 'Not allowed.', array( 'status' => 403 ) );
 		}
-		$files = array_keys( self::plugin_updates() );
+		$files = array_values( array_intersect( (array) $files, array_keys( self::plugin_updates() ) ) );
 		if ( ! $files ) {
 			return array( 'message' => 'Everything was already up to date.' );
 		}
@@ -311,29 +325,99 @@ class Surface_Actions {
 			}
 		}
 		if ( 0 === $ok ) {
-			return new WP_Error( 'surface_update_failed', 'Updates failed. Your host may need filesystem credentials, so try Open updates instead.', array( 'status' => 500 ) );
+			return new WP_Error( 'surface_update_failed', 'The update failed. Your host may need filesystem credentials.', array( 'status' => 500 ) );
 		}
-		return array( 'message' => sprintf( 'Updated %d of %d.', $ok, count( $files ) ) );
+		return array( 'message' => $all ? sprintf( 'Updated %d of %d.', $ok, count( $files ) ) : 'Updated.' );
 	}
 
-	private static function do_write() {
-		if ( ! current_user_can( 'publish_posts' ) ) {
+	public static function update_core() {
+		if ( ! current_user_can( 'update_core' ) ) {
 			return new WP_Error( 'surface_nope', 'Not allowed.', array( 'status' => 403 ) );
 		}
+		require_once ABSPATH . 'wp-admin/includes/file.php';
+		require_once ABSPATH . 'wp-admin/includes/misc.php';
+		require_once ABSPATH . 'wp-admin/includes/update.php';
+		require_once ABSPATH . 'wp-admin/includes/class-wp-upgrader.php';
+
+		$core = get_core_updates();
+		if ( empty( $core[0] ) || 'upgrade' !== $core[0]->response ) {
+			return array( 'message' => 'WordPress is already up to date.' );
+		}
+		ob_start();
+		$upgrader = new Core_Upgrader( new Automatic_Upgrader_Skin() );
+		$result   = $upgrader->upgrade( $core[0] );
+		ob_end_clean();
+
+		if ( is_wp_error( $result ) ) {
+			return $result;
+		}
+		return array( 'message' => 'WordPress updated to ' . $core[0]->current . '.' );
+	}
+
+	/** Edit a draft in place, optionally publishing it. */
+	public static function save_draft( $post_id, $title, $content, $publish ) {
+		if ( ! current_user_can( 'edit_post', $post_id ) ) {
+			return new WP_Error( 'surface_nope', 'Not allowed.', array( 'status' => 403 ) );
+		}
+		$publish = $publish && current_user_can( 'publish_post', $post_id );
+		$r       = wp_update_post(
+			array(
+				'ID'           => $post_id,
+				'post_title'   => sanitize_text_field( $title ),
+				'post_content' => self::to_blocks( $content ),
+				'post_status'  => $publish ? 'publish' : 'draft',
+			),
+			true
+		);
+		if ( is_wp_error( $r ) ) {
+			return $r;
+		}
+		$out = array( 'message' => ( $publish ? 'Published' : 'Saved' ) . ' "' . get_the_title( $post_id ) . '".' );
+		if ( $publish ) {
+			$out['undo'] = array( 'type' => 'publish', 'id' => $post_id );
+		}
+		return $out;
+	}
+
+	public static function plain( $content ) {
+		$text = wp_strip_all_tags( str_replace( array( '</p>', '<br>', '<br />' ), array( "</p>\n\n", "\n", "\n" ), $content ) );
+		return trim( preg_replace( "/\n{3,}/", "\n\n", $text ) );
+	}
+
+	/** A suggested draft for a composer: array( 'title'?, 'content' ). */
+	public static function suggest( $id ) {
+		if ( 0 === strpos( $id, 'comment-' ) ) {
+			$c = get_comment( (int) substr( $id, 8 ) );
+			if ( ! $c || ! current_user_can( 'moderate_comments' ) ) {
+				return new WP_Error( 'surface_nope', 'Comment not found.', array( 'status' => 404 ) );
+			}
+			return array( 'content' => self::draft_reply( $c ) );
+		}
+		if ( 'write' === $id && current_user_can( 'publish_posts' ) ) {
+			list( $title, $body ) = self::generate_post();
+			return array( 'title' => $title, 'content' => $body );
+		}
+		return new WP_Error( 'surface_unknown', 'Nothing to suggest.', array( 'status' => 400 ) );
+	}
+
+	private static function generate_post() {
 		$recent = wp_list_pluck( get_posts( array( 'posts_per_page' => 8 ) ), 'post_title' );
 		$ai     = Surface_AI::complete(
 			'You ghostwrite short blog posts for a site owner. Suggest one fresh topic that fits the site, then write about 250 words. Plain, specific, human. No emoji, no em dashes. Reply in exactly this format: first line "TITLE: <title>", then a blank line, then the body as plain paragraphs separated by blank lines.',
 			sprintf( "Site: %s (%s)\nRecent post titles:\n- %s", get_bloginfo( 'name' ), get_bloginfo( 'description' ), implode( "\n- ", $recent ) ?: 'none yet' ),
 			900
 		);
-
 		if ( $ai && preg_match( '/^TITLE:\s*(.+)\n+(.+)$/s', $ai, $m ) ) {
-			$title = trim( $m[1] );
-			$body  = trim( $m[2] );
-		} else {
-			$title = 'Draft from ' . wp_date( 'F j' );
-			$body  = "What I want to say.\n\nWhy it matters.\n\nWhat happens next.";
+			return array( trim( $m[1] ), trim( $m[2] ) );
 		}
+		return array( 'Draft from ' . wp_date( 'F j' ), "What I want to say.\n\nWhy it matters.\n\nWhat happens next." );
+	}
+
+	private static function do_write() {
+		if ( ! current_user_can( 'publish_posts' ) ) {
+			return new WP_Error( 'surface_nope', 'Not allowed.', array( 'status' => 403 ) );
+		}
+		list( $title, $body ) = self::generate_post();
 		return self::create_post( $title, $body, 'draft', true );
 	}
 
@@ -356,7 +440,6 @@ class Surface_Actions {
 		add_post_meta( $id, 'surface_created', 1 );
 		return array(
 			'message' => ( 'publish' === get_post_status( $id ) ? 'Published' : 'Saved a draft of' ) . ' "' . get_the_title( $id ) . '".',
-			'link'    => array( 'label' => 'Open it', 'url' => get_edit_post_link( $id, 'raw' ) ),
 			'undo'    => array( 'type' => 'post', 'id' => (int) $id ),
 		);
 	}

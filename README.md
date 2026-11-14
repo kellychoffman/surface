@@ -10,7 +10,7 @@ Surface removes the dashboard, the menu and the admin bar from your first screen
 - a draft that has been sitting too long
 - a post you haven't written
 
-Each item has two buttons. **Do it myself** opens only the UI that task needs, right there in the row (a reply box, a title and body, a link to the update screen). **Do it for me** just does it, then shows what it did with an **Undo** where that makes sense.
+Each item has two buttons. **Do it myself** opens only the UI that task needs, right there in the row: a reply box, a post editor, a list of plugins to update one by one. You never get sent to wp-admin. Inside a composer, **Suggest a draft** fills the box for you to edit. **Do it for me** just does it, then shows what it did with an **Undo** where that makes sense.
 
 There is no navigation to learn. The interface is composed per task and disappears when the task is done.
 
@@ -25,13 +25,17 @@ There is no navigation to learn. The interface is composed per task and disappea
 
 The front end is vanilla JS and CSS. There is no build step.
 
+## Demo mode (default)
+
+Out of the box Surface runs as a prototype: fake tasks, fake "AI" replies and drafts, no API key, and nothing is written to your site. Buttons really work and show realistic results, so you can click through the whole idea on an empty install. Switch to your real site data with the **Demo mode** link in the footer, or force it in `wp-config.php` with `define( 'SURFACE_DEMO', false );`.
+
 ## Install
 
 1. Download this repo as a zip, or clone it into `wp-content/plugins/surface`.
 2. Activate **Surface**.
 3. Log in again. You land on Surface.
 
-Want the old screens? The footer has **Classic admin**, and `/wp-admin/index.php?classic=1` skips the redirect. Deactivating the plugin restores everything.
+Surface never links to wp-admin. If you need the old dashboard, `/wp-admin/index.php?classic=1` skips the redirect, and deactivating the plugin restores everything.
 
 ## Optional: Claude drafting
 
@@ -47,8 +51,8 @@ Comment text is sent to the Anthropic API when drafting a reply. Nothing is sent
 
 - "Do it for me" on a post only ever saves a **draft**.
 - Replies and drafts made by Surface are tagged, so **Undo** can only remove things Surface itself created.
-- Core updates are deliberately left as "do it yourself".
-- Plugin updates need WordPress to be able to write to disk. If your host asks for FTP credentials, use **Open updates** instead.
+- Core updates are never done for you automatically. You review and confirm them inline.
+- Plugin and core updates need WordPress to be able to write to disk.
 
 ## Status
 

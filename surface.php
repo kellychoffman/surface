@@ -22,6 +22,7 @@ define( 'SURFACE_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SURFACE_URL', plugin_dir_url( __FILE__ ) );
 
 require_once SURFACE_DIR . 'includes/class-surface-ai.php';
+require_once SURFACE_DIR . 'includes/class-surface-demo.php';
 require_once SURFACE_DIR . 'includes/class-surface-actions.php';
 require_once SURFACE_DIR . 'includes/class-surface-rest.php';
 require_once SURFACE_DIR . 'includes/class-surface-page.php';

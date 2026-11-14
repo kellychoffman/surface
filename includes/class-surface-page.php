@@ -81,6 +81,8 @@ class Surface_Page {
 			'classic' => admin_url( 'edit.php?classic=1' ),
 			'logout'  => wp_logout_url( home_url( '/' ) ),
 			'ai'      => Surface_AI::enabled(),
+			'demo'    => Surface_Demo::on(),
+			'canMode' => current_user_can( 'manage_options' ),
 		);
 
 		nocache_headers();

@@ -22,7 +22,7 @@ Optional: add an Anthropic API key and replies and posts are drafted by Claude. 
 2. Activate the plugin.
 3. Log in again.
 
-Use `/wp-admin/index.php?classic=1` or the Classic admin link to reach the normal dashboard.
+Use `/wp-admin/index.php?classic=1` to reach the normal dashboard.
 
 == Changelog ==
 

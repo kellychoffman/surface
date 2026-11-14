@@ -13,20 +13,39 @@ class Surface_Rest {
 		return current_user_can( 'edit_posts' );
 	}
 
+	public static function can_admin() {
+		return current_user_can( 'manage_options' );
+	}
+
+	public static function mode( WP_REST_Request $req ) {
+		Surface_Demo::set( (bool) $req['demo'] );
+		return array( 'demo' => Surface_Demo::on() );
+	}
+
 	public static function routes() {
 		$perm = array( __CLASS__, 'can' );
 
 		register_rest_route( self::NS, '/actions', array( 'methods' => 'GET', 'permission_callback' => $perm, 'callback' => array( __CLASS__, 'actions' ) ) );
 		register_rest_route( self::NS, '/do', array( 'methods' => 'POST', 'permission_callback' => $perm, 'callback' => array( __CLASS__, 'do_it' ) ) );
 		register_rest_route( self::NS, '/submit', array( 'methods' => 'POST', 'permission_callback' => $perm, 'callback' => array( __CLASS__, 'submit' ) ) );
+		register_rest_route( self::NS, '/draft', array( 'methods' => 'POST', 'permission_callback' => $perm, 'callback' => array( __CLASS__, 'draft' ) ) );
+		register_rest_route( self::NS, '/mode', array( 'methods' => 'POST', 'permission_callback' => array( __CLASS__, 'can_admin' ), 'callback' => array( __CLASS__, 'mode' ) ) );
 		register_rest_route( self::NS, '/undo', array( 'methods' => 'POST', 'permission_callback' => $perm, 'callback' => array( __CLASS__, 'undo' ) ) );
 	}
 
 	public static function actions() {
-		return array( 'actions' => Surface_Actions::collect() );
+		return array( 'actions' => Surface_Demo::on() ? Surface_Demo::actions() : Surface_Actions::collect() );
+	}
+
+	public static function draft( WP_REST_Request $req ) {
+		$id = sanitize_text_field( (string) $req['id'] );
+		return rest_ensure_response( Surface_Demo::on() ? Surface_Demo::suggest( $id ) : Surface_Actions::suggest( $id ) );
 	}
 
 	public static function do_it( WP_REST_Request $req ) {
+		if ( Surface_Demo::on() ) {
+			return rest_ensure_response( Surface_Demo::run( sanitize_text_field( (string) $req['id'] ) ) );
+		}
 		return rest_ensure_response( Surface_Actions::run( sanitize_text_field( (string) $req['id'] ) ) );
 	}
 
@@ -37,12 +56,28 @@ class Surface_Rest {
 		$id   = sanitize_text_field( (string) $req['id'] );
 		$data = (array) $req['data'];
 
+		if ( Surface_Demo::on() ) {
+			return rest_ensure_response( Surface_Demo::submit( $id, $data ) );
+		}
+
 		if ( 0 === strpos( $id, 'comment-' ) ) {
 			$c = get_comment( (int) substr( $id, 8 ) );
 			if ( ! $c ) {
 				return new WP_Error( 'surface_nope', 'Comment not found.', array( 'status' => 404 ) );
 			}
 			return rest_ensure_response( Surface_Actions::send_reply( $c, (string) ( $data['content'] ?? '' ) ) );
+		}
+
+		if ( 'plugins' === $id ) {
+			return rest_ensure_response( Surface_Actions::update_plugins( array( (string) ( $data['plugin'] ?? '' ) ) ) );
+		}
+
+		if ( 'core' === $id ) {
+			return rest_ensure_response( Surface_Actions::update_core() );
+		}
+
+		if ( 0 === strpos( $id, 'draft-' ) ) {
+			return rest_ensure_response( Surface_Actions::save_draft( (int) substr( $id, 6 ), (string) ( $data['title'] ?? '' ), (string) ( $data['content'] ?? '' ), ! empty( $data['publish'] ) ) );
 		}
 
 		if ( 'write' === $id ) {
@@ -70,6 +105,9 @@ class Surface_Rest {
 	}
 
 	public static function undo( WP_REST_Request $req ) {
+		if ( Surface_Demo::on() ) {
+			return rest_ensure_response( Surface_Demo::undo() );
+		}
 		return rest_ensure_response( Surface_Actions::undo( (array) $req['undo'] ) );
 	}
 }
